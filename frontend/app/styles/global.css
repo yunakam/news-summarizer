@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* ここから下は任意で追加カスタマイズ */
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f9fafb; /* 薄いグレー背景 */
+  color: #111827;            /* ダークグレー文字 */
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: #2563eb;            /* Tailwind の blue-600 */
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
