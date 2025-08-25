@@ -3,11 +3,6 @@
 from transformers import pipeline
 import re
 import unicodedata
-# from langchain.llms import HuggingFacePipeline
-# from langchain.prompts import PromptTemplate
-# from langchain_huggingface.llms import HuggingFacePipeline
-# from langchain_core.prompts import PromptTemplate
-
 
 # 入力テキストの長さによって出力トークン数をダイナミックに設定する
 from math import ceil
@@ -19,57 +14,57 @@ DEFAULT_PROFILE = {
     "ratio":  {"short": (0.11, 0.18), "medium": (0.18, 0.28), "long": (0.28, 0.43)},
     "cap":    {"short": (40, 190),    "medium": (120, 380),   "long": (190, 620)},
     "no_repeat": 3,
-    "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+    "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
 }
 
 # ---- 特殊レンジ・キャップが要る言語だけを個別定義 ----
 SPECIAL_LANG_PROFILES = {
     # 日本語
     "ja": {
-        "ratio":  {"short": (0.08, 0.15), "medium": (0.15, 0.25), "long": (0.25, 0.40)},
-        "cap":    {"short": (32, 160),    "medium": (100, 320),   "long": (160, 520)},
+        "ratio":  {"short": (0.12, 0.18), "medium": (0.15, 0.25), "long": (0.25, 0.40)},
+        "cap":    {"short": (50, 150),    "medium": (100, 320),   "long": (160, 520)},
         "no_repeat": 3,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     # 中国語（簡/繁共通）
     "zh": {
-        "ratio":  {"short": (0.05, 0.12), "medium": (0.12, 0.20), "long": (0.20, 0.35)},
-        "cap":    {"short": (28, 130),    "medium": (85, 260),    "long": (140, 420)},
+        "ratio":  {"short": (0.08, 0.12), "medium": (0.12, 0.20), "long": (0.20, 0.35)},
+        "cap":    {"short": (40, 130),    "medium": (85, 260),    "long": (140, 420)},
         "no_repeat": 4,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     # 韓国語
     "ko": {
-        "ratio":  {"short": (0.07, 0.14), "medium": (0.14, 0.23), "long": (0.23, 0.38)},
-        "cap":    {"short": (30, 145),    "medium": (95, 290),    "long": (150, 470)},
+        "ratio":  {"short": (0.10, 0.16), "medium": (0.14, 0.23), "long": (0.23, 0.38)},
+        "cap":    {"short": (50, 145),    "medium": (95, 290),    "long": (150, 470)},
         "no_repeat": 3,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     # 分かち書きが乏しいスクリプト系（タイ/ラオス/クメール/ビルマなど）
     # モデル依存で重複が出やすいので no_repeat=4、比率はCJK寄りにやや低め
     "th": {
-        "ratio":  {"short": (0.07, 0.14), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
-        "cap":    {"short": (30, 145),    "medium": (95, 280),    "long": (150, 450)},
+        "ratio":  {"short": (0.10, 0.16), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
+        "cap":    {"short": (50, 145),    "medium": (95, 280),    "long": (150, 450)},
         "no_repeat": 4,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     "lo": {  # Lao
-        "ratio":  {"short": (0.07, 0.14), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
-        "cap":    {"short": (30, 145),    "medium": (95, 280),    "long": (150, 450)},
+        "ratio":  {"short": (0.10, 0.16), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
+        "cap":    {"short": (50, 145),    "medium": (95, 280),    "long": (150, 450)},
         "no_repeat": 4,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     "km": {  # Khmer
-        "ratio":  {"short": (0.07, 0.14), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
-        "cap":    {"short": (30, 145),    "medium": (95, 280),    "long": (150, 450)},
+        "ratio":  {"short": (0.10, 0.16), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
+        "cap":    {"short": (50, 145),    "medium": (95, 280),    "long": (150, 450)},
         "no_repeat": 4,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
     "my": {  # Burmese
-        "ratio":  {"short": (0.07, 0.14), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
-        "cap":    {"short": (30, 145),    "medium": (95, 280),    "long": (150, 450)},
+        "ratio":  {"short": (0.10, 0.16), "medium": (0.14, 0.22), "long": (0.22, 0.36)},
+        "cap":    {"short": (50, 145),    "medium": (95, 280),    "long": (150, 450)},
         "no_repeat": 4,
-        "length_penalty": {"short": 0.9, "medium": 1.05, "long": 1.2},
+        "length_penalty": {"short": 1.0, "medium": 1.05, "long": 1.2},
     },
 }
 
@@ -206,6 +201,7 @@ def run_summary(text: str, mode: str = "medium", lang_code: str | None = None):
     if lang not in _summarizers:
         lang = "en"  # 未対応言語はデフォルト英語にフォールバック
     print("Original text language: ", lang)
+    print("Mode: ", mode)
 
     summarizer = _summarizers[lang]
 
@@ -225,4 +221,6 @@ def run_summary(text: str, mode: str = "medium", lang_code: str | None = None):
         **params
     )
     raw =  out[0]["summary_text"]
+    print("Summary: ", clean_summary(raw))
+
     return clean_summary(raw)
