@@ -3,58 +3,97 @@ import { useEffect, useState } from "react";
 
 export default function Home() {
 
-    // 入力テキストの状態
-    const [text, setText] = useState<string>("");
-    // 要約結果の状態（複数保持）
+    // ===== 状態管理 =====
+    const [text, setText] = useState<string>(""); 
+    // ↑ ユーザーが直接入力した本文
+
+    const [url, setUrl] = useState<string>(""); 
+    // ↑ ユーザーが入力した記事URL
+
     const [summaries, setSummaries] = useState<
         { id: number; content: string}[]
-    >([]);
+    >([]); 
+    // ↑ 要約結果を複数保持（削除・コピー機能のため配列にしている）
 
-    // モードの状態（短め=short / 普通=medium / 長め=long）※デフォルトはMedium
     const [mode, setMode] = useState<"short" | "medium" | "long">("medium");
+    // ↑ 要約の長さモード（短め/普通/長め）
 
+    const [loading, setLoading] = useState(false); 
+    // ↑ ボタンに「要約中...」と表示するためのフラグ
+
+    const [error, setError] = useState<string>(""); 
+    // ↑ エラーメッセージ表示用
+
+
+    // ===== ページ初期化時に localStorage からモードを復元 =====
     useEffect(() => {
-        // ページ初期表示時に localStorage を確認
         const savedMode = localStorage.getItem("summaryMode");
         if (savedMode === "short" || savedMode === "medium" || savedMode === "long") {
             setMode(savedMode);
         }
     }, []);
 
-    // mode が変わったら localStorage に保存
+    // モードが変わるたび localStorage に保存
     useEffect(() => {
         localStorage.setItem("summaryMode", mode);
     }, [mode]);
 
-    // 送信中フラグ（任意）
-    const [loading, setLoading] = useState(false);
-    // エラーメッセージ（任意）
-    const [error, setError] = useState<string>("");
 
+    // ===== フォーム送信処理（要約ボタン押下時） =====
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
         setLoading(true);
 
-        try{
-        // フォーム送信時に呼び出され、/api/summarize/route.tsにPOSTされる
-        const res = await fetch("/api/summarize", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, mode }),
-        });
-        
-            if (!res.ok) {
-                const msg = await res.text();
+        if (!text && !url) {
+            setError("本文または記事URLを入力してください");
+            setLoading(false);
+            return;
+            }
+
+        try {
+            let textToSummarize = text; // 最終的に要約APIに渡す本文
+
+            // --- URL入力がある場合は、URLから本文抽出APIを呼ぶ ---
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                const resExtract = await fetch("/api/extract_article", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url }), // DjangoにURLを渡す
+                });
+
+                if (!resExtract.ok) {
+                    throw new Error("記事本文を取得できませんでした");
+                }
+                const dataExtract = await resExtract.json();
+                textToSummarize = dataExtract.article || "";
+            }
+
+            if (!textToSummarize) {
+                alert("本文が入力されていないか、記事本文を取得できませんでした");
+                return;
+            }
+
+            // --- 要約APIを呼び出す ---
+            const resSummary = await fetch("/api/summarize", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: textToSummarize, mode }),
+            });
+
+            if (!resSummary.ok) {
+                const msg = await resSummary.text();
                 throw new Error(msg || "Server Error occurred.");
             }
-            const data = await res.json();
 
-            // 新しい要約をリストに追加
+            const dataSummary = await resSummary.json();
+
+            // --- 要約結果をリストに追加 ---
             setSummaries((prev) => [
                 ...prev,
-                { id: Date.now(), content: data.summary },
+                { id: Date.now(), content: dataSummary.summary },
             ]);
+
         } catch (err) {
             setError(err instanceof Error ? err.message : "Unknown Error");
         } finally {
@@ -62,20 +101,22 @@ export default function Home() {
         }
     };
 
-    // アウトプットをクリップボードにコピー
 
-    const [copiedId, setCopiedId] = useState<number |null>(null);
+    // ===== コピー処理 =====
+    const [copiedId, setCopiedId] = useState<number | null>(null);
 
     const handleCopy = (id: number, content: string) => {
         navigator.clipboard.writeText(content);
         setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000)
+        setTimeout(() => setCopiedId(null), 2000);
     };
 
-    // アウトプットを削除
+    // ===== 削除処理 =====
     const handleDelete = (id: number) => {
         setSummaries((prev) => prev.filter((s) => s.id !== id));
-    }
+    };
+
+
 
     return (
         <>
@@ -93,9 +134,22 @@ export default function Home() {
                     onChange={(e) => setText(e.target.value)}
                     rows={10}
                     className="border p-3 w-4/5 max-w-3xl"
-                    required
-                    placeholder="ここに記事本文を入力"
+                    placeholder="記事本文を入力"
                 />
+
+                {/* URL入力欄 */}
+                <div className="mt-4 w-4/5 max-w-3xl">
+                    <label className="block mb-2 font-semibold">
+                        または記事のURLを貼り付け：
+                    </label>
+                    <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        className="border p-2 w-full"
+                        placeholder="https://example.com/news/123"
+                    />
+                </div>                
 
                 {/* モード選択ラジオボタン */}
                 <fieldset className="max-w-3xl mt-4">

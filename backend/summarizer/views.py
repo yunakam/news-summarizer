@@ -2,6 +2,36 @@ from django.http import JsonResponse, HttpResponseNotAllowed, HttpResponseBadReq
 from django.views.decorators.csrf import csrf_exempt
 import json
 from .news_summarizer_model import run_summary
+from newspaper import Article
+
+@csrf_exempt
+def extract_article(request):
+    """
+    ユーザーから受け取ったURLをもとに記事本文を抽出して返すAPI
+    """
+    if request.method == "POST":
+        data = json.loads(request.body)
+        url = data.get("url")
+
+        if not url:
+            return JsonResponse({"error": "URLが指定されていません"}, status=400)
+
+        try:
+            article = Article(url)
+            article.download()
+            article.parse()
+            
+            # 抽出本文をサーバーターミナルに出力
+            print("\n=== Extracted Article Text ===")
+            print(article.text[:30], "...", article.text[-30:])
+            print("=== End of Article ===\n")
+
+            return JsonResponse({"article": article.text})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+    else:
+        return JsonResponse({"error": "POSTメソッドで呼び出してください"}, status=405)
+    
 
 @csrf_exempt
 def summarize(request):
