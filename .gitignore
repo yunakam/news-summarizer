@@ -14,7 +14,7 @@
 /coverage
 
 # next.js
-/.next/
+.next/
 /out/
 
 # production
@@ -47,3 +47,5 @@ __pycache__/
 
 # node
 node_modules/
+
+

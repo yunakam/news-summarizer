@@ -3,60 +3,74 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 from .news_summarizer_model import run_summary
 from newspaper import Article
+from .services.router import route_and_summarize, TranslationError
 
-@csrf_exempt
-def extract_article(request):
-    """
-    ユーザーから受け取ったURLをもとに記事本文を抽出して返すAPI
-    """
-    if request.method == "POST":
-        data = json.loads(request.body)
-        url = data.get("url")
-
-        if not url:
-            return JsonResponse({"error": "URLが指定されていません"}, status=400)
-
-        try:
-            article = Article(url)
-            article.download()
-            article.parse()
-            
-            # 抽出本文をサーバーターミナルに出力
-            print("\n=== Extracted Article Text ===")
-            print(article.text[:30], "...", article.text[-30:])
-            print("=== End of Article ===\n")
-
-            return JsonResponse({"article": article.text})
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
-    else:
-        return JsonResponse({"error": "POSTメソッドで呼び出してください"}, status=405)
-    
 
 @csrf_exempt
 def summarize(request):
-    # POST以外は 405 を返す
+    """
+    何をする関数か：
+      - text でも url でも受け付ける統合版エンドポイント
+      - ko 入力は ja にピボット、それ以外の非英日言語は en にピボット
+      - 要約（英/日モデル）→ target_lang に最終翻訳
+      - 長さは short|medium|long で指定
+
+    受信JSON例：
+      { "text": "...", "target_lang": "ja", "length": "medium" }
+      { "url": "https://...", "target_lang": "fr", "length": "short" }
+    戻り値：
+      {
+        "detected_lang": "ko",
+        "pivoted": true,
+        "summary_src_lang": "ja",
+        "target_lang": "ja",
+        "length": "medium",
+        "summary": "..."
+      }
+    """
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"], "Use POST method instead")
-    
-    # JSONを取り出し、text と mode を取得
 
     try:
-        data = json.loads(request.body)
-    except  json.JSONDecodeError:
+        data = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
         return HttpResponseBadRequest("Invalid JSON body")
-    
-    text = data.get("text")
-    mode = data.get("mode")
-    
-    if not text:
-        return HttpResponseBadRequest("Missing 'text'")
 
-    allowed = {"short", "medium", "long"}
-    if mode not in allowed:
-        return HttpResponseBadRequest("Invalid 'mode' (use: short|medium|long)")
+    target_lang = (data.get("target_lang") or "ja").lower()
+    length_mode = (data.get("length") or "medium").lower()
 
-    summary = run_summary(text, mode)
-    
-    return JsonResponse({"summary": summary})
+    # 入力の取り出し：url優先、無ければtext
+    raw = ""
+    if data.get("url"):
+        try:
+            art = Article(data["url"])
+            art.download()
+            art.parse()
+            raw = (art.text or "").strip()
 
+            # 任意：デバッグ出力（先頭末尾のみ）
+            print("\n=== Extracted Article Text (v2) ===")
+            print(raw[:60], "...", raw[-60:])
+            print("=== End of Article ===\n")
+        except Exception as e:
+            return JsonResponse({"error": f"記事抽出に失敗: {str(e)}"}, status=400)
+    else:
+        raw = (data.get("text") or "").strip()
+
+    if not raw:
+        return HttpResponseBadRequest("Missing 'text' or 'url'")
+
+    try:
+        result = route_and_summarize(raw, target_lang=target_lang, length_mode=length_mode)
+        return JsonResponse({
+            "detected_lang": result["detected"],
+            "pivoted": result["pivoted"],
+            "summary_src_lang": result["summary_src"],
+            "target_lang": target_lang,
+            "length": length_mode,
+            "summary": result["summary"],
+        })
+    except TranslationError as te:
+        return JsonResponse({"error": f"翻訳失敗: {str(te)}"}, status=502)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
