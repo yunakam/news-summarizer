@@ -49,8 +49,8 @@ def summarize(request):
             raw = (art.text or "").strip()
 
             # 任意：デバッグ出力（先頭末尾のみ）
-            print("\n=== Extracted Article Text (v2) ===")
-            print(raw[:60], "...", raw[-60:])
+            print("\n=== Extracted Article Text ===")
+            print(raw[:30], "...", raw[-30:])
             print("=== End of Article ===\n")
         except Exception as e:
             return JsonResponse({"error": f"記事抽出に失敗: {str(e)}"}, status=400)

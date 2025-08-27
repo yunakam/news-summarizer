@@ -15,6 +15,11 @@ class LEDSummarizer(BaseSummarizer):
         inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=16384)
         global_attention_mask = torch.zeros_like(inputs["attention_mask"])
         global_attention_mask[:, 0] = 1
+        
+        # ログ出力（BaseSummarizer共通メソッド）
+        self.log_summary_info(lang, mode, n_in,
+                        params["min_new_tokens"], params["max_new_tokens"])
+
 
         summary_ids = self.model.generate(
             inputs["input_ids"],

@@ -26,6 +26,9 @@ def route_and_summarize(raw_text: str, target_lang: str, length_mode: str = "med
     # 要約の実行（英/日モデルは news_summarizer_model.py 側で定義済み）
     summary_native = run_summary(text_for_sum, mode=length_mode, lang_code=summary_src)
 
+    # デバッグ出力：pivot言語での要約結果を表示
+    print(f"[Pivot Summary - {summary_src}] {summary_native} ...")
+
     # 最終翻訳（ユーザー指定言語に合わせる）
     if target_lang and target_lang.lower() != summary_src.lower():
         summary_out = deepl_translate(summary_native, src=summary_src, tgt=target_lang)
